@@ -60,7 +60,6 @@ int main(void)
 
 		if (ret)
 			break;
-		break;
 	}
 
 	return 0;
