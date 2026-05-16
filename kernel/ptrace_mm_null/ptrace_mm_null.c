@@ -56,6 +56,21 @@ int main(void)
 			return 1;
 		}
 
+		/*
+		 * Sync pipe: write end is O_CLOEXEC, so it auto-closes
+		 * when execl() succeeds.  Parent reads from efd[0] —
+		 * EOF means exec happened.
+		 */
+		int efd[2];
+		if (pipe(efd) < 0) {
+			perror("pipe");
+			return 1;
+		}
+		if (fcntl(efd[1], F_SETFD, FD_CLOEXEC) < 0) {
+			perror("fcntl");
+			return 1;
+		}
+
 		pid_t c = fork();
 		if (c < 0) {
 			perror("fork");
@@ -63,6 +78,7 @@ int main(void)
 		}
 		if (c == 0) {
 			close(pfd[1]);
+			close(efd[0]);
 			dup2(pfd[0], STDIN_FILENO);
 			close(pfd[0]);
 			int dn = open("/dev/null", O_WRONLY);
@@ -76,9 +92,13 @@ int main(void)
 			_exit(127);
 		}
 		close(pfd[0]);
+		close(efd[1]);
 
-		/* Let unix_chkpwd open /etc/shadow and drop privs. */
-		//usleep(10000);
+		/* Block until execl() succeeds (EOF on sync pipe). */
+		char dummy;
+		while (read(efd[0], &dummy, 1) > 0)
+			;
+		close(efd[0]);
 
 		/* EOF on stdin → unix_chkpwd exits. */
 		close(pfd[1]);
